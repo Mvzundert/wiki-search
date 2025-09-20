@@ -51,21 +51,25 @@ const (
 	wikiSelectionView state = iota
 	searchResultsView
 	articleView
+	searchArticleView
 )
 
 // Model holds the state of our application.
 type model struct {
-	state          state
-	textInput      textinput.Model
-	results        []SearchResult
-	cursor         int
-	statusMsg      string
-	selectedTitle  string
-	articleContent string
-	searchType     string
-	wikiOptions    []string
-	wikiCursor     int
-	viewport       viewport.Model // Add viewport for scrolling
+	state             state
+	textInput         textinput.Model
+	results           []SearchResult
+	cursor            int
+	statusMsg         string
+	selectedTitle     string
+	articleContent    string
+	searchType        string
+	wikiOptions       []string
+	wikiCursor        int
+	viewport          viewport.Model // Add viewport for scrolling
+	searchQuery       string
+	matchIndexes      []int
+	currentMatchIndex int
 }
 
 // Init initializes the application state.
@@ -91,7 +95,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		case "esc":
 			switch m.state {
-			case articleView:
+			case articleView, searchArticleView:
 				m.state = searchResultsView
 				m.articleContent = ""
 				m.textInput.Focus()
@@ -103,6 +107,25 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, tea.Quit
 
+		case "/":
+			if m.state == articleView {
+				m.state = searchArticleView
+				m.textInput.Focus()
+				m.textInput.Prompt = "/"
+				m.textInput.CharLimit = 100
+				return m, nil
+			}
+
+		case "n":
+			if m.state == articleView && len(m.matchIndexes) > 0 {
+				m.currentMatchIndex = (m.currentMatchIndex + 1) % len(m.matchIndexes)
+				m.viewport.SetYOffset(calculateLineFromIndex(m.articleContent, m.matchIndexes[m.currentMatchIndex]))
+			}
+		case "p":
+			if m.state == articleView && len(m.matchIndexes) > 0 {
+				m.currentMatchIndex = (m.currentMatchIndex - 1 + len(m.matchIndexes)) % len(m.matchIndexes)
+				m.viewport.SetYOffset(calculateLineFromIndex(m.articleContent, m.matchIndexes[m.currentMatchIndex]))
+			}
 		case "up", "k":
 			switch m.state {
 			case searchResultsView:
@@ -113,10 +136,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if m.wikiCursor > 0 {
 					m.wikiCursor--
 				}
-			case articleView:
-				// Pass to viewport for scrolling
-				m.viewport, vpCmd = m.viewport.Update(msg)
-				return m, vpCmd
 			}
 
 		case "down", "j":
@@ -129,8 +148,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if m.wikiCursor < len(m.wikiOptions)-1 {
 					m.wikiCursor++
 				}
-			case articleView:
-				// Pass to viewport for scrolling
+			}
+
+		case "ctrl+u", "ctrl+d":
+			if m.state == articleView {
 				m.viewport, vpCmd = m.viewport.Update(msg)
 				return m, vpCmd
 			}
@@ -166,6 +187,16 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.state = searchResultsView
 				m.textInput.Focus()
 				return m, nil
+			} else if m.state == searchArticleView {
+				m.searchQuery = m.textInput.Value()
+				m.matchIndexes = findMatches(m.articleContent, m.searchQuery)
+				m.currentMatchIndex = 0
+				m.textInput.Blur()
+				m.state = articleView
+				if len(m.matchIndexes) > 0 {
+					m.viewport.SetYOffset(calculateLineFromIndex(m.articleContent, m.matchIndexes[0]))
+				}
+				return m, nil
 			} else if m.textInput.Focused() {
 				if m.textInput.Value() != "" {
 					m.statusMsg = "Searching..."
@@ -200,18 +231,37 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	}
 
-	// Only update text input if it is focused
-	if m.textInput.Focused() {
-		m.textInput, cmd = m.textInput.Update(msg)
-	}
+	// Update the viewport and text input
+	m.viewport, vpCmd = m.viewport.Update(msg)
+	m.textInput, cmd = m.textInput.Update(msg)
 
-	return m, cmd
+	return m, tea.Batch(cmd, vpCmd)
 }
 
 // View renders the UI to the terminal.
 func (m model) View() string {
 	s := strings.Builder{}
 
+	// Always display the article and search prompt conditionally
+	if m.state == articleView || m.state == searchArticleView {
+		s.WriteString(color.New(color.Bold, color.FgCyan).Sprint(m.selectedTitle))
+		s.WriteString("\n\n")
+
+		if m.state == searchArticleView {
+			s.WriteString(m.textInput.View())
+			s.WriteString("\n\n")
+			s.WriteString(color.New(color.FgHiBlack).Sprint("Press Enter to search, Esc to cancel."))
+		} else {
+			// Highlight and display the article content
+			highlightedContent := highlightMatches(m.articleContent, m.searchQuery, m.matchIndexes, m.currentMatchIndex)
+			m.viewport.SetContent(highlightedContent)
+			s.WriteString(m.viewport.View())
+			s.WriteString(color.New(color.FgHiBlack).Sprint("\n\nPress 'esc' to go back, Up/Down to scroll, '/' to search, 'n/p' to jump between matches, 'q' to quit."))
+		}
+		return s.String()
+	}
+
+	// Handles other views (wikiSelectionView, searchResultsView)
 	switch m.state {
 	case wikiSelectionView:
 		s.WriteString("Select a Wiki to Search:\n\n")
@@ -244,12 +294,6 @@ func (m model) View() string {
 		}
 
 		s.WriteString(color.New(color.FgHiBlack).Sprint("\n\nEnter to search/select, Up/Down to navigate, 'o' to open in browser, 'q' to quit."))
-
-	case articleView:
-		s.WriteString(color.New(color.Bold, color.FgCyan).Sprint(m.selectedTitle))
-		s.WriteString("\n\n")
-		s.WriteString(m.viewport.View())
-		s.WriteString(color.New(color.FgHiBlack).Sprint("\n\nPress 'esc' to go back to results, Up/Down to scroll, 'q' to quit."))
 	}
 
 	return s.String()
@@ -263,6 +307,57 @@ type searchMsg struct {
 type articleMsg struct {
 	content string
 	err     error
+}
+
+// findMatches returns the starting index of all matches
+func findMatches(content, query string) []int {
+	if query == "" {
+		return nil
+	}
+	var matches []int
+	lowerContent := strings.ToLower(content)
+	lowerQuery := strings.ToLower(query)
+	start := 0
+	for {
+		i := strings.Index(lowerContent[start:], lowerQuery)
+		if i == -1 {
+			break
+		}
+		matches = append(matches, start+i)
+		start += i + 1
+	}
+	return matches
+}
+
+// highlightMatches adds color to the matches
+func highlightMatches(content, query string, matches []int, currentMatch int) string {
+	if len(matches) == 0 || query == "" {
+		return content
+	}
+
+	var sb strings.Builder
+	lastIndex := 0
+	highlightedColor := color.New(color.BgYellow, color.FgBlack).SprintFunc()
+	currentMatchColor := color.New(color.BgHiYellow, color.FgBlack).SprintFunc()
+
+	for i, index := range matches {
+		sb.WriteString(content[lastIndex:index])
+		matchStr := content[index : index+len(query)]
+		if i == currentMatch {
+			sb.WriteString(currentMatchColor(matchStr))
+		} else {
+			sb.WriteString(highlightedColor(matchStr))
+		}
+		lastIndex = index + len(query)
+	}
+	sb.WriteString(content[lastIndex:])
+
+	return sb.String()
+}
+
+// calculateLineFromIndex determines the line number based on a character index
+func calculateLineFromIndex(content string, index int) int {
+	return strings.Count(content[:index], "\n")
 }
 
 // performSearch is a command that makes the API call.
@@ -356,7 +451,7 @@ func fetchArticle(title string, wikiType string) tea.Cmd {
 			return articleMsg{err: fmt.Errorf("failed to parse article response: %w", err)}
 		}
 
-		// Parse the fullURL string into a url.URL object
+		// Fix: Parse the fullURL string into a *url.URL object before using it.
 		parsedURL, err := url.Parse(fullURL)
 		if err != nil {
 			return articleMsg{err: fmt.Errorf("failed to parse URL: %w", err)}
