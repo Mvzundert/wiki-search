@@ -83,17 +83,17 @@ When you first launch the application, you'll be prompted to select a wiki to se
 Once a wiki is selected, type your search query and press Enter. The application will display a list of matching articles.
 
 ## Navigation
-Up/Down (j/k): Navigate through search results or scroll the article content line by line.
-Enter: Select a search result to view the article.
-Ctrl+d/Ctrl+u: Scroll the article content half a page at a time (like Vim).
-Esc: Go back to the previous screen (e.g., from an article to search results).
-o: Open the currently selected article in your web browser.
-q or Ctrl+c: Quit the application.
+- Up/Down (j/k): Navigate through search results or scroll the article content line by line.
+- Enter: Select a search result to view the article.
+- Ctrl+d/Ctrl+u: Scroll the article content half a page at a time (like Vim).
+- Esc: Go back to the previous screen (e.g., from an article to search results).
+- o: Open the currently selected article in your web browser.
+- q or Ctrl+c: Quit the application.
 
 ## In-Article Search
-/: Start an in-article search. Type your query and press Enter.
-n: Jump to the next search result.
-p: Jump to the previous search result.
+- /: Start an in-article search. Type your query and press Enter.
+- n: Jump to the next search result.
+- p: Jump to the previous search result.
 
 ## Dependencies
 This project relies on the following Go packages:
