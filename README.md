@@ -23,6 +23,7 @@ You must have Go installed on your system.
 ```bash
 # Clone the repository
 git clone [https://github.com/Mvzundert/wiki-search.git](https://github.com/Mvzundert/wiki-search.git)
+```
 
 # Navigate to the project directory
 cd wiki-search
