@@ -242,59 +242,63 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m model) View() string {
 	s := strings.Builder{}
 
-	// Always display the article and search prompt conditionally
-	if m.state == articleView || m.state == searchArticleView {
-		s.WriteString(color.New(color.Bold, color.FgCyan).Sprint(m.selectedTitle))
-		s.WriteString("\n\n")
+	// Create a new color style for the default foreground
+	defaultColor := color.New(color.FgHiWhite).SprintFunc()
 
-		if m.state == searchArticleView {
-			s.WriteString(m.textInput.View())
-			s.WriteString("\n\n")
-			s.WriteString(color.New(color.FgHiBlack).Sprint("Press Enter to search, Esc to cancel."))
-		} else {
-			// Highlight and display the article content
-			highlightedContent := highlightMatches(m.articleContent, m.searchQuery, m.matchIndexes, m.currentMatchIndex)
-			m.viewport.SetContent(highlightedContent)
-			s.WriteString(m.viewport.View())
-			s.WriteString(color.New(color.FgHiBlack).Sprint("\n\nPress 'esc' to go back, Up/Down to scroll, '/' to search, 'n/p' to jump between matches, 'q' to quit."))
-		}
-		return s.String()
-	}
-
-	// Handles other views (wikiSelectionView, searchResultsView)
-	switch m.state {
-	case wikiSelectionView:
-		s.WriteString("Select a Wiki to Search:\n\n")
-		for i, wiki := range m.wikiOptions {
-			cursor := " "
-			if i == m.wikiCursor {
-				cursor = color.New(color.Bold, color.FgGreen).Sprint(">")
-			}
-			s.WriteString(fmt.Sprintf("%s %s\n", cursor, wiki))
-		}
-		s.WriteString(color.New(color.FgHiBlack).Sprint("\n\nPress Enter to select, 'q' to quit."))
-	case searchResultsView:
-		s.WriteString(m.textInput.View())
-		s.WriteString("\n\n")
-
-		s.WriteString(color.New(color.FgCyan).Sprint(m.statusMsg))
-		s.WriteString("\n\n")
-
-		if len(m.results) > 0 {
-			s.WriteString(color.New(color.FgCyan).Sprint("Search Results:\n"))
-			for i, result := range m.results {
-				var cursor string
-				if i == m.cursor {
-					cursor = color.New(color.Bold, color.FgGreen).Sprint("> ")
-				} else {
-					cursor = "  "
+	// Apply the default color to all text output
+	s.WriteString(defaultColor(func() string {
+		var content strings.Builder
+		switch m.state {
+		case wikiSelectionView:
+			content.WriteString("Select a Wiki to Search:\n\n")
+			for i, wiki := range m.wikiOptions {
+				cursor := " "
+				if i == m.wikiCursor {
+					cursor = color.New(color.Bold, color.FgGreen).Sprint(">")
 				}
-				s.WriteString(fmt.Sprintf("%s%s\n", cursor, result.Title))
+				content.WriteString(fmt.Sprintf("%s %s\n", cursor, wiki))
+			}
+			content.WriteString("\n\nPress Enter to select, 'q' to quit.")
+		case searchResultsView:
+			content.WriteString(m.textInput.View())
+			content.WriteString("\n\n")
+
+			content.WriteString(m.statusMsg)
+			content.WriteString("\n\n")
+
+			if len(m.results) > 0 {
+				content.WriteString("Search Results:\n")
+				for i, result := range m.results {
+					var cursor string
+					if i == m.cursor {
+						cursor = color.New(color.Bold, color.FgGreen).Sprint("> ")
+					} else {
+						cursor = "  "
+					}
+					content.WriteString(fmt.Sprintf("%s%s\n", cursor, result.Title))
+				}
+			}
+
+			content.WriteString("\n\nEnter to search/select, Up/Down to navigate, 'o' to open in browser, 'q' to quit.")
+
+		case articleView, searchArticleView:
+			content.WriteString(color.New(color.Bold, color.FgCyan).Sprint(m.selectedTitle))
+			content.WriteString("\n\n")
+
+			if m.state == searchArticleView {
+				content.WriteString(m.textInput.View())
+				content.WriteString("\n\n")
+				content.WriteString("Press Enter to search, Esc to cancel.")
+			} else {
+				highlightedContent := highlightMatches(m.articleContent, m.searchQuery, m.matchIndexes, m.currentMatchIndex)
+				m.viewport.SetContent(highlightedContent)
+				content.WriteString(m.viewport.View())
+				content.WriteString("\n\nPress 'esc' to go back, Up/Down to scroll, '/' to search, 'n/p' to jump between matches, 'q' to quit.")
 			}
 		}
 
-		s.WriteString(color.New(color.FgHiBlack).Sprint("\n\nEnter to search/select, Up/Down to navigate, 'o' to open in browser, 'q' to quit."))
-	}
+		return content.String()
+	}()))
 
 	return s.String()
 }
