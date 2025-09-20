@@ -5,11 +5,16 @@ on:
     branches: [ "master" ]
   pull_request:
     branches: [ "master" ]
+  release:
+    types: [published]
 
 jobs:
-
   build:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        goos: [linux, windows, darwin]
+        goarch: [amd64]
     steps:
     - uses: actions/checkout@v4
 
@@ -19,7 +24,63 @@ jobs:
         go-version: '1.25'
 
     - name: Build
-      run: go build -v ./...
+      run: go build -o wiki-search-${{ matrix.goos }}-${{ matrix.goarch }}
+      env:
+        GOOS: ${{ matrix.goos }}
+        GOARCH: ${{ matrix.goarch }}
+        
+    - name: Upload artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: wiki-search-${{ matrix.goos }}-${{ matrix.goarch }}
+        path: wiki-search-${{ matrix.goos }}-${{ matrix.goos }}
 
-    - name: Test
-      run: go test -v ./...
+  release:
+    needs: [build]
+    runs-on: ubuntu-latest
+    steps:
+    - name: Download all artifacts
+      uses: actions/download-artifact@v4
+      with:
+        path: ./artifacts
+
+    - name: List files for debug
+      run: ls -R ./artifacts
+
+    - name: Create Release
+      id: create_release
+      uses: actions/create-release@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        tag_name: ${{ github.ref }}
+        release_name: Release ${{ github.ref }}
+        draft: false
+        prerelease: false
+
+    - name: Upload Release Assets
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }}
+        asset_path: ./artifacts/wiki-search-linux-amd64/wiki-search-linux-amd64
+        asset_name: wiki-search-linux-amd64
+
+    - name: Upload Release Assets for Windows
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }}
+        asset_path: ./artifacts/wiki-search-windows-amd64/wiki-search-windows-amd64
+        asset_name: wiki-search-windows-amd64.exe
+
+    - name: Upload Release Assets for macOS
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }}
+        asset_path: ./artifacts/wiki-search-darwin-amd64/wiki-search-darwin-amd64
+        asset_name: wiki-search-darwin-amd64
