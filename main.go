@@ -18,6 +18,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/fatih/color"
 	"github.com/go-shiori/go-readability"
+	"regexp"
 )
 
 // SearchResult matches the JSON response from the MediaWiki search API.
@@ -66,10 +67,12 @@ type model struct {
 	searchType        string
 	wikiOptions       []string
 	wikiCursor        int
-	viewport          viewport.Model // Add viewport for scrolling
+	viewport          viewport.Model
 	searchQuery       string
 	matchIndexes      []int
 	currentMatchIndex int
+	urlRegex          *regexp.Regexp
+	urlMatches        [][]int
 }
 
 // Init initializes the application state.
@@ -226,6 +229,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		} else {
 			m.state = articleView
 			m.articleContent = msg.content
+			// Find all hyperlinks when the article is fetched
+			m.urlMatches = m.urlRegex.FindAllStringIndex(m.articleContent, -1)
 			m.statusMsg = fmt.Sprintf("Displaying article: %s", m.selectedTitle)
 			m.viewport.SetContent(m.articleContent)
 		}
@@ -242,64 +247,57 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m model) View() string {
 	s := strings.Builder{}
 
-	// Create a new color style for the default foreground
-	defaultColor := color.New(color.FgHiWhite).SprintFunc()
+	// Create a single color function for the main text
+	mainColor := color.New(color.FgWhite).SprintFunc()
 
-	// Apply the default color to all text output
-	s.WriteString(defaultColor(func() string {
-		var content strings.Builder
-		switch m.state {
-		case wikiSelectionView:
-			content.WriteString("Select a Wiki to Search:\n\n")
-			for i, wiki := range m.wikiOptions {
-				cursor := " "
-				if i == m.wikiCursor {
-					cursor = color.New(color.Bold, color.FgGreen).Sprint(">")
-				}
-				content.WriteString(fmt.Sprintf("%s %s\n", cursor, wiki))
+	switch m.state {
+	case wikiSelectionView:
+		s.WriteString(mainColor("Select a Wiki to Search:\n\n"))
+		for i, wiki := range m.wikiOptions {
+			cursor := " "
+			if i == m.wikiCursor {
+				cursor = color.New(color.Bold, color.FgGreen).Sprint(">")
 			}
-			content.WriteString("\n\nPress Enter to select, 'q' to quit.")
-		case searchResultsView:
-			content.WriteString(m.textInput.View())
-			content.WriteString("\n\n")
+			s.WriteString(fmt.Sprintf("%s %s\n", cursor, mainColor(wiki)))
+		}
+		s.WriteString(mainColor("\n\nPress Enter to select, 'q' to quit."))
 
-			content.WriteString(m.statusMsg)
-			content.WriteString("\n\n")
+	case searchResultsView:
+		s.WriteString(m.textInput.View())
+		s.WriteString("\n\n")
 
-			if len(m.results) > 0 {
-				content.WriteString("Search Results:\n")
-				for i, result := range m.results {
-					var cursor string
-					if i == m.cursor {
-						cursor = color.New(color.Bold, color.FgGreen).Sprint("> ")
-					} else {
-						cursor = "  "
-					}
-					content.WriteString(fmt.Sprintf("%s%s\n", cursor, result.Title))
+		s.WriteString(mainColor(m.statusMsg))
+		s.WriteString("\n\n")
+
+		if len(m.results) > 0 {
+			s.WriteString(mainColor("Search Results:\n"))
+			for i, result := range m.results {
+				var cursor string
+				if i == m.cursor {
+					cursor = color.New(color.Bold, color.FgGreen).Sprint("> ")
+				} else {
+					cursor = "  "
 				}
-			}
-
-			content.WriteString("\n\nEnter to search/select, Up/Down to navigate, 'o' to open in browser, 'q' to quit.")
-
-		case articleView, searchArticleView:
-			content.WriteString(color.New(color.Bold, color.FgCyan).Sprint(m.selectedTitle))
-			content.WriteString("\n\n")
-
-			if m.state == searchArticleView {
-				content.WriteString(m.textInput.View())
-				content.WriteString("\n\n")
-				content.WriteString("Press Enter to search, Esc to cancel.")
-			} else {
-				highlightedContent := highlightMatches(m.articleContent, m.searchQuery, m.matchIndexes, m.currentMatchIndex)
-				m.viewport.SetContent(highlightedContent)
-				content.WriteString(m.viewport.View())
-				content.WriteString("\n\nPress 'esc' to go back, Up/Down to scroll, '/' to search, 'n/p' to jump between matches, 'q' to quit.")
+				s.WriteString(fmt.Sprintf("%s%s\n", cursor, mainColor(result.Title)))
 			}
 		}
+		s.WriteString(mainColor("\n\nEnter to search/select, Up/Down to navigate, 'o' to open in browser, 'q' to quit."))
 
-		return content.String()
-	}()))
+	case articleView, searchArticleView:
+		s.WriteString(color.New(color.Bold, color.FgCyan).Sprint(m.selectedTitle))
+		s.WriteString("\n\n")
 
+		if m.state == searchArticleView {
+			s.WriteString(m.textInput.View())
+			s.WriteString("\n\n")
+			s.WriteString(mainColor("Press Enter to search, Esc to cancel."))
+		} else {
+			highlightedContent := highlightText(m.articleContent, m.searchQuery, m.matchIndexes, m.currentMatchIndex, m.urlMatches)
+			m.viewport.SetContent(highlightedContent)
+			s.WriteString(m.viewport.View())
+			s.WriteString(mainColor("\n\nPress 'esc' to go back, Up/Down to scroll, '/' to search, 'n/p' to jump between matches, 'q' to quit."))
+		}
+	}
 	return s.String()
 }
 
@@ -333,28 +331,70 @@ func findMatches(content, query string) []int {
 	return matches
 }
 
-// highlightMatches adds color to the matches
-func highlightMatches(content, query string, matches []int, currentMatch int) string {
-	if len(matches) == 0 || query == "" {
-		return content
-	}
-
+// highlightText handles all text formatting, including search matches and URLs
+func highlightText(content, query string, searchMatches []int, currentMatch int, urlMatches [][]int) string {
 	var sb strings.Builder
 	lastIndex := 0
-	highlightedColor := color.New(color.BgYellow, color.FgBlack).SprintFunc()
-	currentMatchColor := color.New(color.BgHiYellow, color.FgBlack).SprintFunc()
 
-	for i, index := range matches {
-		sb.WriteString(content[lastIndex:index])
-		matchStr := content[index : index+len(query)]
-		if i == currentMatch {
+	// Define colors
+	searchMatchColor := color.New(color.BgYellow, color.FgBlack).SprintFunc()
+	currentMatchColor := color.New(color.BgHiYellow, color.FgBlack).SprintFunc()
+	urlColor := color.New(color.FgHiBlue).SprintFunc()
+	defaultColor := color.New(color.FgWhite).SprintFunc()
+
+	// Combine and sort all match indexes to process in order
+	type match struct {
+		start           int
+		end             int
+		isURL           bool
+		isCurrentSearch bool
+	}
+
+	var allMatches []match
+
+	// Add search matches
+	for i, start := range searchMatches {
+		end := start + len(query)
+		allMatches = append(allMatches, match{start, end, false, i == currentMatch})
+	}
+
+	// Add URL matches
+	for _, urlMatch := range urlMatches {
+		allMatches = append(allMatches, match{urlMatch[0], urlMatch[1], true, false})
+	}
+
+	// Sort matches by their starting index
+	for i := range allMatches {
+		for j := i + 1; j < len(allMatches); j++ {
+			if allMatches[i].start > allMatches[j].start {
+				allMatches[i], allMatches[j] = allMatches[j], allMatches[i]
+			}
+		}
+	}
+
+	for _, m := range allMatches {
+		// Add the preceding unstyled text
+		if m.start > lastIndex {
+			sb.WriteString(defaultColor(content[lastIndex:m.start]))
+		}
+
+		// Add the styled match
+		matchStr := content[m.start:m.end]
+		if m.isURL {
+			sb.WriteString(urlColor(matchStr))
+		} else if m.isCurrentSearch {
 			sb.WriteString(currentMatchColor(matchStr))
 		} else {
-			sb.WriteString(highlightedColor(matchStr))
+			sb.WriteString(searchMatchColor(matchStr))
 		}
-		lastIndex = index + len(query)
+
+		lastIndex = m.end
 	}
-	sb.WriteString(content[lastIndex:])
+
+	// Add any remaining unstyled text
+	if lastIndex < len(content) {
+		sb.WriteString(defaultColor(content[lastIndex:]))
+	}
 
 	return sb.String()
 }
@@ -473,6 +513,9 @@ func fetchArticle(title string, wikiType string) tea.Cmd {
 }
 
 func main() {
+	// A simple but effective regex for matching URLs.
+	urlRegex := regexp.MustCompile(`https?://[^\s/$.?#].[^\s]*`)
+
 	ti := textinput.New()
 	ti.Placeholder = "Enter your search query..."
 	ti.CharLimit = 150
@@ -487,10 +530,10 @@ func main() {
 		state:       wikiSelectionView,
 		wikiOptions: []string{"wikipedia", "arch"},
 		viewport:    vp,
+		urlRegex:    urlRegex,
 	})
 	if _, err := p.Run(); err != nil {
 		fmt.Printf("Error running program: %v\n", err)
 		os.Exit(1)
 	}
 }
-
