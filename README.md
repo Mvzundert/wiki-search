@@ -59,7 +59,9 @@ If you prefer to build the application from source, you must have Go installed o
 
 Clone the repository and navigate to the project directory.
 
-git clone [https://github.com/Mvzundert/wiki-search.git](https://github.com/Mvzundert/wiki-search.git)
+```Bash
+git clone https://github.com/Mvzundert/wiki-search.git
+```
 
 ```Bash
 cd wiki-search
