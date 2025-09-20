@@ -89,7 +89,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.viewport.Width = msg.Width
 		m.viewport.Height = msg.Height - 4
-		m.viewport.SetContent(m.articleContent)
+		wrappedContent := wrapText(m.articleContent, m.viewport.Width)
+		m.viewport.SetContent(wrappedContent)
 
 	case tea.KeyMsg:
 		switch msg.String() {
@@ -231,7 +232,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.articleContent = msg.content
 			m.urlMatches = m.urlRegex.FindAllStringIndex(m.articleContent, -1)
 			m.statusMsg = fmt.Sprintf("Displaying article: %s", m.selectedTitle)
-			m.viewport.SetContent(m.articleContent)
+
+			// Apply text wrapping before setting viewport content
+			wrappedContent := wrapText(m.articleContent, m.viewport.Width)
+			m.viewport.SetContent(wrappedContent)
 		}
 	}
 
@@ -285,7 +289,9 @@ func (m model) View() string {
 			s.WriteString("\n\n")
 			s.WriteString(mainColor("Press Enter to search, Esc to cancel."))
 		} else {
-			highlightedContent := highlightText(m.articleContent, m.searchQuery, m.matchIndexes, m.currentMatchIndex, m.urlMatches)
+			// Wrap the content before highlighting
+			wrappedContent := wrapText(m.articleContent, m.viewport.Width)
+			highlightedContent := highlightText(wrappedContent, m.searchQuery, m.matchIndexes, m.currentMatchIndex, m.urlMatches)
 			m.viewport.SetContent(highlightedContent)
 			s.WriteString(m.viewport.View())
 			s.WriteString(mainColor("\n\nPress 'esc' to go back, Up/Down to scroll, '/' to search, 'n/p' to jump between matches, 'q' to quit."))
@@ -377,6 +383,34 @@ func highlightText(content, query string, searchMatches []int, currentMatch int,
 	return sb.String()
 }
 
+// wrapText wraps the given string to the specified width.
+func wrapText(text string, width int) string {
+	if width <= 0 {
+		return text
+	}
+	var result strings.Builder
+	lines := strings.Split(text, "\n")
+	for _, line := range lines {
+		words := strings.Fields(line)
+		if len(words) == 0 {
+			result.WriteString("\n")
+			continue
+		}
+
+		currentLine := words[0]
+		for _, word := range words[1:] {
+			if len(currentLine)+1+len(word) > width {
+				result.WriteString(currentLine + "\n")
+				currentLine = word
+			} else {
+				currentLine += " " + word
+			}
+		}
+		result.WriteString(currentLine + "\n")
+	}
+	return result.String()
+}
+
 // calculateLineFromIndex determines the line number based on a character index
 func calculateLineFromIndex(content string, index int) int {
 	return strings.Count(content[:index], "\n")
@@ -458,7 +492,6 @@ func fetchArticle(title string, wikiType string) tea.Cmd {
 		if err := json.Unmarshal(body, &data); err != nil {
 			return articleMsg{err: fmt.Errorf("failed to parse article response: %w", err)}
 		}
-		// FIX: Parse the fullURL string into a *url.URL object before using it.
 		parsedURL, err := url.Parse(fullURL)
 		if err != nil {
 			return articleMsg{err: fmt.Errorf("failed to parse URL: %w", err)}
