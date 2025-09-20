@@ -88,7 +88,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.viewport.Width = msg.Width
-		m.viewport.Height = msg.Height - 4 // Account for header and footer
+		m.viewport.Height = msg.Height - 4
 		m.viewport.SetContent(m.articleContent)
 
 	case tea.KeyMsg:
@@ -173,7 +173,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				switch runtime.GOOS {
 				case "linux":
 					openCmd = exec.Command("xdg-open", pageURL)
-				case "darwin": // macOS
+				case "darwin":
 					openCmd = exec.Command("open", pageURL)
 				case "windows":
 					openCmd = exec.Command("cmd", "/c", "start", pageURL)
@@ -229,14 +229,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		} else {
 			m.state = articleView
 			m.articleContent = msg.content
-			// Find all hyperlinks when the article is fetched
 			m.urlMatches = m.urlRegex.FindAllStringIndex(m.articleContent, -1)
 			m.statusMsg = fmt.Sprintf("Displaying article: %s", m.selectedTitle)
 			m.viewport.SetContent(m.articleContent)
 		}
 	}
 
-	// Update the viewport and text input
 	m.viewport, vpCmd = m.viewport.Update(msg)
 	m.textInput, cmd = m.textInput.Update(msg)
 
@@ -246,8 +244,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 // View renders the UI to the terminal.
 func (m model) View() string {
 	s := strings.Builder{}
-
-	// Create a single color function for the main text
 	mainColor := color.New(color.FgWhite).SprintFunc()
 
 	switch m.state {
@@ -265,10 +261,8 @@ func (m model) View() string {
 	case searchResultsView:
 		s.WriteString(m.textInput.View())
 		s.WriteString("\n\n")
-
 		s.WriteString(mainColor(m.statusMsg))
 		s.WriteString("\n\n")
-
 		if len(m.results) > 0 {
 			s.WriteString(mainColor("Search Results:\n"))
 			for i, result := range m.results {
@@ -286,7 +280,6 @@ func (m model) View() string {
 	case articleView, searchArticleView:
 		s.WriteString(color.New(color.Bold, color.FgCyan).Sprint(m.selectedTitle))
 		s.WriteString("\n\n")
-
 		if m.state == searchArticleView {
 			s.WriteString(m.textInput.View())
 			s.WriteString("\n\n")
@@ -335,35 +328,26 @@ func findMatches(content, query string) []int {
 func highlightText(content, query string, searchMatches []int, currentMatch int, urlMatches [][]int) string {
 	var sb strings.Builder
 	lastIndex := 0
-
-	// Define colors
 	searchMatchColor := color.New(color.BgYellow, color.FgBlack).SprintFunc()
 	currentMatchColor := color.New(color.BgHiYellow, color.FgBlack).SprintFunc()
 	urlColor := color.New(color.FgHiBlue).SprintFunc()
 	defaultColor := color.New(color.FgWhite).SprintFunc()
 
-	// Combine and sort all match indexes to process in order
 	type match struct {
 		start           int
 		end             int
 		isURL           bool
 		isCurrentSearch bool
 	}
-
 	var allMatches []match
-
-	// Add search matches
 	for i, start := range searchMatches {
 		end := start + len(query)
 		allMatches = append(allMatches, match{start, end, false, i == currentMatch})
 	}
-
-	// Add URL matches
 	for _, urlMatch := range urlMatches {
 		allMatches = append(allMatches, match{urlMatch[0], urlMatch[1], true, false})
 	}
 
-	// Sort matches by their starting index
 	for i := range allMatches {
 		for j := i + 1; j < len(allMatches); j++ {
 			if allMatches[i].start > allMatches[j].start {
@@ -373,12 +357,9 @@ func highlightText(content, query string, searchMatches []int, currentMatch int,
 	}
 
 	for _, m := range allMatches {
-		// Add the preceding unstyled text
 		if m.start > lastIndex {
 			sb.WriteString(defaultColor(content[lastIndex:m.start]))
 		}
-
-		// Add the styled match
 		matchStr := content[m.start:m.end]
 		if m.isURL {
 			sb.WriteString(urlColor(matchStr))
@@ -387,15 +368,12 @@ func highlightText(content, query string, searchMatches []int, currentMatch int,
 		} else {
 			sb.WriteString(searchMatchColor(matchStr))
 		}
-
 		lastIndex = m.end
 	}
 
-	// Add any remaining unstyled text
 	if lastIndex < len(content) {
 		sb.WriteString(defaultColor(content[lastIndex:]))
 	}
-
 	return sb.String()
 }
 
@@ -411,13 +389,11 @@ func performSearch(term string, wikiType string) tea.Cmd {
 		if wikiType == "arch" {
 			urlStr = "https://wiki.archlinux.org/api.php"
 		}
-
 		params := url.Values{}
 		params.Add("action", "query")
 		params.Add("format", "json")
 		params.Add("list", "search")
 		params.Add("srsearch", term)
-
 		fullURL := urlStr + "?" + params.Encode()
 
 		req, err := http.NewRequest("GET", fullURL, nil)
@@ -426,7 +402,6 @@ func performSearch(term string, wikiType string) tea.Cmd {
 		}
 		req.Header.Set("User-Agent", "Your-CLI-Tool-Name/1.0 (Contact: your-email@example.com)")
 
-		// Set a timeout for the request
 		client := &http.Client{Timeout: 5 * time.Second}
 		resp, err := client.Do(req)
 		if err != nil {
@@ -437,17 +412,14 @@ func performSearch(term string, wikiType string) tea.Cmd {
 		if resp.StatusCode != http.StatusOK {
 			return searchMsg{err: fmt.Errorf("API request failed with status code: %d %s", resp.StatusCode, resp.Status)}
 		}
-
 		body, err := io.ReadAll(resp.Body)
 		if err != nil {
 			return searchMsg{err: err}
 		}
-
 		var data Response
 		if err := json.Unmarshal(body, &data); err != nil {
 			return searchMsg{err: fmt.Errorf("failed to parse API response: %w", err)}
 		}
-
 		return searchMsg{results: data.Query.Search}
 	}
 }
@@ -459,68 +431,54 @@ func fetchArticle(title string, wikiType string) tea.Cmd {
 		if wikiType == "arch" {
 			urlStr = "https://wiki.archlinux.org/api.php"
 		}
-
 		params := url.Values{}
 		params.Add("action", "parse")
 		params.Add("format", "json")
 		params.Add("page", title)
-
 		fullURL := urlStr + "?" + params.Encode()
-
 		req, err := http.NewRequest("GET", fullURL, nil)
 		if err != nil {
 			return articleMsg{err: err}
 		}
 		req.Header.Set("User-Agent", "Your-CLI-Tool-Name/1.0 (Contact: your-email@example.com)")
-
-		// Set a timeout for the request
 		client := &http.Client{Timeout: 5 * time.Second}
 		resp, err := client.Do(req)
 		if err != nil {
 			return articleMsg{err: err}
 		}
 		defer resp.Body.Close()
-
 		if resp.StatusCode != http.StatusOK {
 			return articleMsg{err: fmt.Errorf("API request failed with status code: %d %s", resp.StatusCode, resp.Status)}
 		}
-
 		body, err := io.ReadAll(resp.Body)
 		if err != nil {
 			return articleMsg{err: err}
 		}
-
 		var data ArticleResponse
 		if err := json.Unmarshal(body, &data); err != nil {
 			return articleMsg{err: fmt.Errorf("failed to parse article response: %w", err)}
 		}
-
-		// Fix: Parse the fullURL string into a *url.URL object before using it.
+		// FIX: Parse the fullURL string into a *url.URL object before using it.
 		parsedURL, err := url.Parse(fullURL)
 		if err != nil {
 			return articleMsg{err: fmt.Errorf("failed to parse URL: %w", err)}
 		}
-
 		// Use the go-readability library to convert the HTML content to plain text.
 		contentReader := bytes.NewReader([]byte(data.Parse.Text.Content))
 		article, err := readability.FromReader(contentReader, parsedURL)
 		if err != nil {
 			return articleMsg{err: fmt.Errorf("failed to make content readable: %w", err)}
 		}
-
 		return articleMsg{content: article.TextContent}
 	}
 }
 
 func main() {
-	// A simple but effective regex for matching URLs.
 	urlRegex := regexp.MustCompile(`https?://[^\s/$.?#].[^\s]*`)
-
 	ti := textinput.New()
 	ti.Placeholder = "Enter your search query..."
 	ti.CharLimit = 150
 	ti.Width = 50
-
 	vp := viewport.New(0, 0)
 	vp.YPosition = 2
 
@@ -537,3 +495,4 @@ func main() {
 		os.Exit(1)
 	}
 }
+
