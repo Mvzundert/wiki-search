@@ -68,6 +68,7 @@ jobs:
         upload_url: ${{ steps.create_release.outputs.upload_url }}
         asset_path: ./artifacts/wiki-search-linux-amd64/wiki-search-linux-amd64
         asset_name: wiki-search-linux-amd64
+        asset_content_type: application/octet-stream
         
     - name: Upload Release Assets for Windows
       uses: actions/upload-release-asset@v1
@@ -77,6 +78,7 @@ jobs:
         upload_url: ${{ steps.create_release.outputs.upload_url }}
         asset_path: ./artifacts/wiki-search-windows-amd64/wiki-search-windows-amd64
         asset_name: wiki-search-windows-amd64.exe
+        asset_content_type: application/octet-stream
         
     - name: Upload Release Assets for macOS
       uses: actions/upload-release-asset@v1
@@ -86,3 +88,4 @@ jobs:
         upload_url: ${{ steps.create_release.outputs.upload_url }}
         asset_path: ./artifacts/wiki-search-darwin-amd64/wiki-search-darwin-amd64
         asset_name: wiki-search-darwin-amd64
+        asset_content_type: application/octet-stream
