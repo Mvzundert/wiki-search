@@ -29,9 +29,12 @@ git clone [https://github.com/Mvzundert/wiki-search.git](https://github.com/Mvzu
 cd wiki-search
 
 # Build and run the application
+
+```bash
 go build -o wiki-search
 
 ./wiki-search
+```
 
 ### Usage
 
