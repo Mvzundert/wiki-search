@@ -98,11 +98,11 @@ Once a wiki is selected, type your search query and press Enter. The application
 ## Dependencies
 This project relies on the following Go packages:
 
-github.com/charmbracelet/bubbletea
-github.com/charmbracelet/bubbles/textinput
-github.com/charmbracelet/bubbles/viewport
-github.com/fatih/color
-github.com/go-shiori/go-readability
-regexp
+- github.com/charmbracelet/bubbletea
+- github.com/charmbracelet/bubbles/textinput
+- github.com/charmbracelet/bubbles/viewport
+- github.com/fatih/color
+- github.com/go-shiori/go-readability
+- regexp
 
 These dependencies will be automatically installed when you build the project using go build.
