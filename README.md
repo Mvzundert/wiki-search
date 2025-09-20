@@ -24,7 +24,10 @@ You must have Go installed on your system.
 git clone [https://github.com/Mvzundert/wiki-search.git](https://github.com/Mvzundert/wiki-search.git)
 
 # Navigate to the project directory
+
+```bash
 cd wiki-search
+```
 
 # Build and run the application
 
